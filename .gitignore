@@ -1,0 +1,46 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Kotlin / Java
+*.class
+*.jar
+*.aar
+
+# Build outputs
+out/
+gen/
+release/
+*.apk
+*.aab
+*.ap_
+
+# Keystore — never commit signing keys
+*.jks
+*.keystore
+keystore.properties
+
+# Proguard
+proguard/
+
+# Test results
+test-results/
+lint/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Node (if you ever add tooling)
+node_modules/
