@@ -2,6 +2,24 @@ package com.ishaan.paperBird.domain.model
 
 import org.json.JSONArray
 import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
+
+private val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+    timeZone = TimeZone.getTimeZone("UTC")
+}
+
+private fun parseDate(json: JSONObject, key: String): Long {
+    val value = json.opt(key)
+    return when (value) {
+        is String -> isoFormat.parse(value)?.time ?: System.currentTimeMillis()
+        is Long -> value // backwards compat with old epoch exports
+        is Int -> value.toLong()
+        else -> System.currentTimeMillis()
+    }
+}
 
 data class Letter(
     val id: Long = 0,
@@ -18,8 +36,8 @@ data class Letter(
         json.put("body", body)
         json.put("category", category)
         json.put("favorite", favorite)
-        json.put("createdAt", createdAt)
-        json.put("updatedAt", updatedAt)
+        json.put("createdAt", isoFormat.format(Date(createdAt)))
+        json.put("updatedAt", isoFormat.format(Date(updatedAt)))
         return json
     }
 
@@ -32,8 +50,8 @@ data class Letter(
                 body = json.optString("body", ""),
                 category = json.optString("category", "Today"),
                 favorite = json.optBoolean("favorite", false),
-                createdAt = json.optLong("createdAt", System.currentTimeMillis()),
-                updatedAt = json.optLong("updatedAt", System.currentTimeMillis())
+                createdAt = parseDate(json, "createdAt"),
+                updatedAt = parseDate(json, "updatedAt")
             )
         }
 
