@@ -59,11 +59,22 @@ fun SettingsScreen(
     ) { uri ->
         uri?.let {
             try {
+                // ✅ Resolve actual filename via ContentResolver, not URI string
+                val mimeType = context.contentResolver.getType(it)
+                val fileName = context.contentResolver
+                    .query(it, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+                    ?.use { cursor ->
+                        if (cursor.moveToFirst()) cursor.getString(0) else null
+                    }
+
                 context.contentResolver.openInputStream(it)?.use { stream ->
-                    if (it.toString().endsWith(".zip", ignoreCase = true)) {
+                    val isZip = mimeType == "application/zip" ||
+                            mimeType == "application/octet-stream" ||
+                            fileName?.endsWith(".zip", ignoreCase = true) == true
+                    if (isZip) {
                         viewModel.importLettersFromZip(stream.readBytes())
                     } else {
-                        val json = stream.bufferedReader().use { it.readText() }
+                        val json = stream.bufferedReader().use { r -> r.readText() }
                         viewModel.importLetterFromJson(json)
                     }
                 }
