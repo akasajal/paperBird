@@ -2,19 +2,19 @@ package com.ishaan.paperBird.domain.model
 
 import org.json.JSONArray
 import org.json.JSONObject
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import java.util.TimeZone
+import java.time.Instant
+import java.time.format.DateTimeFormatter
 
-private val isoFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
-    timeZone = TimeZone.getTimeZone("UTC")
-}
+private fun Long.toIso(): String =
+    DateTimeFormatter.ISO_INSTANT.format(Instant.ofEpochMilli(this))
+
+private fun String.fromIso(): Long =
+    Instant.parse(this).toEpochMilli()
 
 private fun parseDate(json: JSONObject, key: String): Long {
     val value = json.opt(key)
     return when (value) {
-        is String -> isoFormat.parse(value)?.time ?: System.currentTimeMillis()
+        is String -> runCatching { value.fromIso() }.getOrElse { System.currentTimeMillis() }
         is Long -> value // backwards compat with old epoch exports
         is Int -> value.toLong()
         else -> System.currentTimeMillis()
@@ -36,8 +36,8 @@ data class Letter(
         json.put("body", body)
         json.put("category", category)
         json.put("favorite", favorite)
-        json.put("createdAt", isoFormat.format(Date(createdAt)))
-        json.put("updatedAt", isoFormat.format(Date(updatedAt)))
+        json.put("createdAt", createdAt.toIso())
+        json.put("updatedAt", updatedAt.toIso())
         return json
     }
 
