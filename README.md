@@ -1,138 +1,146 @@
-# PaperBird
+# Paper Bird
 
 *A quiet place for your thoughts.*
 
-PaperBird is a minimalist journaling app built with Kotlin and Jetpack Compose. It helps you capture memories, thoughts, emotions, and everyday moments in a calm, distraction-free writing experience.
+Kotlin + Jetpack Compose 
 
-Everything stays on your device. No accounts, no cloud, no ads—just your words.
+---
+
+## Package
+
+`com.ishaan.paperBird`
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| UI | Jetpack Compose + Material 3 |
+| Navigation | Navigation Compose |
+| Database | Room (SQLite) |
+| DI | Hilt |
+| Preferences | DataStore |
+| Images | Coil |
+| Architecture | MVVM (ViewModel + StateFlow) |
+
+---
+
+## Setup
+
+### Requirements
+- Android Studio Ladybug (2024.2) or newer
+- JDK 17
+- minSdk 26 (Android 8.0)
+
+### Steps
+
+```bash
+# 1. Open the project in Android Studio
+# 2. Let Gradle sync complete
+# 3. Run on device or emulator (API 26+)
+```
 
 ---
 
 ## Features
 
-### ️ Write Freely
-- Clean, distraction-free editor
-- Adjustable editor font size
-- Autosave with debounce
-- Word count & estimated reading time
+### Write Without Distractions
+- Full-screen letter editor with adjustable font size
+- Title + body with placeholder text
+- Autosave (3-second debounce on existing letters)
+- Word count & reading time in the editor footer
 
-### Organize Your Thoughts
-- Categories with custom category support
-- Favorites
+### View & Edit Modes
+- Existing letters open in **view mode** — clean, read-only, with Markdown rendered
+- View mode header shows Back, Favorite (indicator), Category (indicator), and Edit
+- Tapping **Edit** switches to edit mode with the full toolbar (Favorite, Category, Image, Save)
+- Keyboard scrolls content correctly in edit mode; cursor stays visible
+
+### Markdown Rendering (View Mode)
+Rendered inline using `AnnotatedString` — no external library required:
+
+| Syntax | Output |
+|---|---|
+| `**text**` | **bold** |
+| `*text*` | *italic* |
+| `~~text~~` | ~~strikethrough~~ |
+| `` `text` `` | `inline code` |
+| `# / ## / ###` | Headings (H1–H3) |
+| `> text` | Blockquote |
+| `- / * / 1.` | Bullet / numbered list |
+
+### Built Around Letters
+- Favorites — heart any letter to keep it close
+- Categories — Love, Gratitude, Achievement, Grief, Memory, Dream, Today (+ custom)
+- Custom categories with a chosen color, visible in the category list
 - Duplicate letters
-- Image attachments
-- Instant search
+- Image attachments (stored by URI, completely local)
 
-### Revisit Memories
-- Timeline view
-- Calendar view
-- Random Letter
-- On This Day
-- Smart date grouping
+### Find Memories Again
+- Instant search with match highlighting
+- Library screen — sort by Newest / Oldest / A→Z / Z→A
+- Category filter in Library
+- Relative date grouping (Today / Yesterday / This Week / This Month / Month / Year)
 
-### Personalize
-- Light & Dark themes
-- Six accent colors
-- Adjustable editor preferences
+### Memories
+- Calendar view — see which days have letters, tap to reveal them
+- Timeline — chronological scroll through your full story
+- On This Day — letters from the same date in past years (shown on Home)
+- Random Letter — a letter to revisit (shown on Home)
+
+### Personalization
+- Dark / Light / System theme toggle
+- 6 accent colors: Rose, Lavender, Sage, Sky, Amber, Slate
+- Adjustable editor font size (12–24sp)
 - Default writing category
+- Custom categories with color picker
 
-### Private by Design
-- Local Room database
-- No accounts
-- Your data never leaves your device
-
----
-
-## 🛠 Tech Stack
-
-| Layer | Technology |
-|--------|------------|
-| Language | Kotlin |
-| UI | Jetpack Compose + Material 3 |
-| Architecture | MVVM |
-| Navigation | Navigation Compose |
-| Database | Room (SQLite) |
-| Dependency Injection | Hilt |
-| Preferences | DataStore |
-| Images | Coil |
+### Privacy
+- All data stored in local Room database
+- **App Lock** — enable with a 4-digit PIN (entered twice to confirm); disabling requires verifying the current PIN
+- **Biometric** — unlock with Fingerprint or Face ID (requires App Lock)
+- **Instant Lock** — re-locks the app the moment it goes to background (requires App Lock)
 
 ---
 
 ## Project Structure
 
-```text
-app/
-└── src/
-    └── main/
-        └── java/
-            └── com/ishaan/paperBird/
-                ├── data/
-                │   ├── local/
-                │   │   ├── dao/
-                │   │   ├── entities/
-                │   │   └── PaperBirdDatabase.kt
-                │   └── repository/
-                │
-                ├── di/
-                │
-                ├── domain/
-                │   └── model/
-                │
-                ├── ui/
-                │   ├── components/
-                │   ├── navigation/
-                │   ├── screens/
-                │   │   ├── calendar/
-                │   │   ├── editor/
-                │   │   ├── favorites/
-                │   │   ├── home/
-                │   │   ├── library/
-                │   │   ├── settings/
-                │   │   └── timeline/
-                │   ├── LetterViewModel.kt
-                │   └── theme/
-                │
-                ├── util/
-                │
-                ├── MainActivity.kt
-                ├── PaperBird.kt
-                └── PaperBirdApplication.kt
 ```
-
----
-
-## Getting Started
-
-### Requirements
-
-- Android Studio Ladybug (2024.2) or newer
-- JDK 17
-- Android 8.0 (API 26+) or higher
-
-### Run
-
-```bash
-git clone https://github.com/akasajal/PaperBird.git
+app/src/main/java/com/ishaan/paperBird/
+├── data/
+│   ├── local/
+│   │   ├── dao/          # LetterDao, AttachmentDao
+│   │   ├── entities/     # LetterEntity, AttachmentEntity
+│   │   └── PaperBirdDatabase.kt
+│   └── repository/
+│       ├── LetterRepository.kt
+│       └── SettingsRepository.kt
+├── di/
+│   └── AppModule.kt      # Hilt module
+├── domain/
+│   └── model/
+│       └── Letter.kt     # Domain models + constants
+├── ui/
+│   ├── components/       # LetterCard, CategoryBadge, PinSetupDialog, PinVerifyDialog, etc.
+│   ├── navigation/       # Screen routes + BottomNavItem
+│   ├── screens/
+│   │   ├── LetterViewModel.kt   # Shared ViewModel
+│   │   ├── home/
+│   │   ├── editor/
+│   │   ├── library/
+│   │   ├── favorites/
+│   │   ├── calendar/
+│   │   ├── timeline/
+│   │   └── settings/
+│   └── theme/            # PaperBirdTheme, Typography, AccentColors
+├── MainActivity.kt
+├── PaperBirdApp.kt           # Nav host + Scaffold
+└── PaperBirdApplication.kt   # @HiltAndroidApp
 ```
-
-Open the project in Android Studio, allow Gradle to sync, then run on an emulator or physical device.
-
----
-
-## Roadmap
-
-- Export letters (TXT / PDF)
-- Import letters
-- Encrypted backups
-- Markdown preview
-- Rich text formatting
 
 ---
 
 ## License
 
-Licensed under the MIT License.
-
----
-
-Made with ❤️ by **Sajal**.
+MIT
