@@ -43,6 +43,7 @@ fun SettingsScreen(
     val editorFontSize by settings.editorFontSize.collectAsState(initial = 16)
     val defaultCategory by settings.defaultCategory.collectAsState(initial = "Today")
     val customCategories by settings.customCategories.collectAsState(initial = emptyList())
+    val customCategoryColors by settings.customCategoryColors.collectAsState(initial = emptyMap())
     val allCategories by settings.allCategories.collectAsState(initial = emptyList())
     val importStatus by viewModel.importStatus.collectAsState()
     val context = LocalContext.current
@@ -225,8 +226,17 @@ fun SettingsScreen(
             item { SettingsSection("Custom Categories") }
 
             items(customCategories, key = { it }) { category ->
+                val catColorHex = customCategoryColors[category]
                 SettingsRow(
                     title = category,
+                    leading = if (catColorHex != null) ({
+                        Box(
+                            modifier = Modifier
+                                .size(14.dp)
+                                .clip(CircleShape)
+                                .background(Color(catColorHex))
+                        )
+                    }) else null,
                     trailing = {
                         IconButton(onClick = {
                             scope.launch { settings.removeCustomCategory(category) }
@@ -319,8 +329,8 @@ fun SettingsScreen(
             item { SettingsSection("About") }
             item {
                 SettingsRow(
-                    title = "Paper Bird",
-                    subtitle = "v1.0 · A quiet place for your thoughts."
+                    title = "To Her",
+                    subtitle = "v1.2 · A place for everything I never got to say."
                 )
             }
         }
@@ -341,7 +351,7 @@ fun SettingsScreen(
 
     if (showAddCategoryDialog) {
         AlertDialog(
-            onDismissRequest = { 
+            onDismissRequest = {
                 showAddCategoryDialog = false
                 newCategoryName = ""
                 selectedColor = CategoryPalette.first()
@@ -356,7 +366,7 @@ fun SettingsScreen(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
-                    
+
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("Select Color", style = MaterialTheme.typography.labelMedium)
                         Row(
@@ -407,7 +417,7 @@ fun SettingsScreen(
                 }) { Text("Add") }
             },
             dismissButton = {
-                TextButton(onClick = { 
+                TextButton(onClick = {
                     showAddCategoryDialog = false
                     newCategoryName = ""
                     selectedColor = CategoryPalette.first()
@@ -451,6 +461,7 @@ private fun SettingsRow(
     title: String,
     subtitle: String = "",
     onClick: (() -> Unit)? = null,
+    leading: @Composable (() -> Unit)? = null,
     trailing: @Composable (() -> Unit)? = null
 ) {
     val modifier = if (onClick != null) Modifier.fillMaxWidth().clickable(onClick = onClick)
@@ -460,6 +471,10 @@ private fun SettingsRow(
         modifier = modifier.padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (leading != null) {
+            leading()
+            Spacer(Modifier.width(12.dp))
+        }
         Column(modifier = Modifier.weight(1f)) {
             Text(text = title, style = MaterialTheme.typography.bodyLarge)
             if (subtitle.isNotBlank()) {
