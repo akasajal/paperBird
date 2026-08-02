@@ -32,8 +32,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -42,6 +47,112 @@ import com.ishaan.paperBird.domain.model.CATEGORY_COLORS
 import com.ishaan.paperBird.ui.components.CategoryBadge
 import com.ishaan.paperBird.ui.components.DeleteConfirmationDialog
 import com.ishaan.paperBird.ui.screens.LetterViewModel
+
+// ---------------------------------------------------------------------------
+// Simple markdown → AnnotatedString renderer (no external library needed)
+// Supports: **bold**, *italic*, ~~strikethrough~~, `code`, # headings, > blockquote
+// ---------------------------------------------------------------------------
+@Composable
+private fun MarkdownText(
+    text: String,
+    baseFontSize: Int,
+    modifier: Modifier = Modifier
+) {
+    val colorScheme = MaterialTheme.colorScheme
+    val annotated = remember(text, baseFontSize) {
+        buildAnnotatedString {
+            val lines = text.split("\n")
+            lines.forEachIndexed { lineIdx, rawLine ->
+                // Heading detection
+                val headingMatch = Regex("^(#{1,3})\\s+(.*)$").matchEntire(rawLine)
+                val blockquote = rawLine.startsWith("> ")
+                val bulletMatch = Regex("^([-*+]|\\d+\\.)\\s+(.*)$").matchEntire(rawLine)
+
+                when {
+                    headingMatch != null -> {
+                        val level = headingMatch.groupValues[1].length
+                        val content = headingMatch.groupValues[2]
+                        val headingSize = when (level) {
+                            1 -> (baseFontSize * 1.75f)
+                            2 -> (baseFontSize * 1.45f)
+                            else -> (baseFontSize * 1.2f)
+                        }
+                        withStyle(SpanStyle(fontWeight = FontWeight.Bold, fontSize = headingSize.sp)) {
+                            appendInlineMarkdown(content)
+                        }
+                    }
+                    blockquote -> {
+                        withStyle(SpanStyle(
+                            color = colorScheme.onSurfaceVariant,
+                            fontStyle = FontStyle.Italic
+                        )) {
+                            append("│ ")
+                            appendInlineMarkdown(rawLine.removePrefix("> "))
+                        }
+                    }
+                    bulletMatch != null -> {
+                        val bullet = bulletMatch.groupValues[1]
+                        val content = bulletMatch.groupValues[2]
+                        val prefix = if (bullet.matches(Regex("\\d+\\."))) "$bullet " else "• "
+                        append(prefix)
+                        appendInlineMarkdown(content)
+                    }
+                    else -> {
+                        appendInlineMarkdown(rawLine)
+                    }
+                }
+                if (lineIdx < lines.lastIndex) append("\n")
+            }
+        }
+    }
+
+    Text(
+        text = annotated,
+        style = TextStyle(
+            color = MaterialTheme.colorScheme.onBackground,
+            fontSize = baseFontSize.sp,
+            lineHeight = (baseFontSize * 1.6).sp
+        ),
+        modifier = modifier
+    )
+}
+
+/**
+ * Appends inline markdown spans (**bold**, *italic*, ~~strike~~, `code`) into the
+ * current AnnotatedString builder scope.
+ */
+private fun androidx.compose.ui.text.AnnotatedString.Builder.appendInlineMarkdown(text: String) {
+    // Tokenise inline patterns
+    val pattern = Regex("""(\*\*(.+?)\*\*|\*(.+?)\*|~~(.+?)~~|`(.+?)`)""")
+    var last = 0
+    for (match in pattern.findAll(text)) {
+        if (match.range.first > last) append(text.substring(last, match.range.first))
+        val raw = match.value
+        when {
+            raw.startsWith("**") -> withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
+                append(match.groupValues[2])
+            }
+            raw.startsWith("*") -> withStyle(SpanStyle(fontStyle = FontStyle.Italic)) {
+                append(match.groupValues[3])
+            }
+            raw.startsWith("~~") -> withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) {
+                append(match.groupValues[4])
+            }
+            raw.startsWith("`") -> withStyle(SpanStyle(
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                background = Color(0x22808080)
+            )) {
+                append(match.groupValues[5])
+            }
+        }
+        last = match.range.last + 1
+    }
+    if (last < text.length) append(text.substring(last))
+}
+
+// ---------------------------------------------------------------------------
+// EditorScreen
+// ---------------------------------------------------------------------------
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -65,6 +176,12 @@ fun EditorScreen(
 
     val hasUnsavedChanges by viewModel.hasUnsavedChanges.collectAsState()
 
+    // ── Mode: view vs edit ──────────────────────────────────────────────────
+    // New letters always start in edit mode; existing letters start in view mode.
+    val isExistingLetter = letterId != null && letterId > 0
+    var isViewMode by remember { mutableStateOf(isExistingLetter) }
+
+    // ── Dialog state ────────────────────────────────────────────────────────
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showCategorySheet by remember { mutableStateOf(false) }
     var showUnsavedDialog by remember { mutableStateOf(false) }
@@ -90,9 +207,9 @@ fun EditorScreen(
         }
     }
 
-    // Autosave on content change for existing letters
+    // Autosave on content change for existing letters (only in edit mode)
     LaunchedEffect(title, body) {
-        if (letter != null && hasUnsavedChanges) {
+        if (!isViewMode && letter != null && hasUnsavedChanges) {
             kotlinx.coroutines.delay(3000)
             viewModel.saveLetter()
         }
@@ -108,13 +225,15 @@ fun EditorScreen(
 
     val catColor = Color((CATEGORY_COLORS[category] ?: 0xFF9A9A9A).toLong())
 
-    // Intercept system back when there are unsaved changes
+    // Back navigation – respect unsaved changes only in edit mode
     val navigateBack: () -> Unit = {
-        if (hasUnsavedChanges) showUnsavedDialog = true else onBack()
+        if (!isViewMode && hasUnsavedChanges) showUnsavedDialog = true else onBack()
     }
-    BackHandler(enabled = hasUnsavedChanges) { showUnsavedDialog = true }
+    BackHandler(enabled = !isViewMode && hasUnsavedChanges) { showUnsavedDialog = true }
 
+    // ── Scaffold ────────────────────────────────────────────────────────────
     Scaffold(
+        contentWindowInsets = WindowInsets(0),
         topBar = {
             TopAppBar(
                 title = {},
@@ -124,44 +243,90 @@ fun EditorScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { viewModel.toggleFavorite() }) {
+                    if (isViewMode) {
+                        // ── VIEW MODE top bar ────────────────────────────────
+                        // Favorite – display only (non-interactive in view mode)
                         Icon(
-                            if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                            imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
                             contentDescription = "Favorite",
                             tint = if (isFavorite) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurface
+                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                            modifier = Modifier.padding(horizontal = 12.dp)
                         )
-                    }
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clickable { showCategorySheet = true },
-                        contentAlignment = Alignment.Center
-                    ) {
+
+                        // Category – display only
                         Box(
                             modifier = Modifier
-                                .clip(CircleShape)
-                                .background(catColor.copy(alpha = 0.18f))
-                                .border(1.dp, catColor.copy(alpha = 0.5f), CircleShape)
-                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                                .height(48.dp)
+                                .padding(horizontal = 4.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = category,
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                                color = catColor
+                            Box(
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(catColor.copy(alpha = 0.10f))
+                                    .border(1.dp, catColor.copy(alpha = 0.3f), CircleShape)
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = category,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                    color = catColor.copy(alpha = 0.6f),
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
+                        }
+
+                        // Edit button
+                        IconButton(onClick = {
+                            isViewMode = false
+                        }) {
+                            Icon(Icons.Filled.Edit, contentDescription = "Edit")
+                        }
+                    } else {
+                        // ── EDIT MODE top bar ────────────────────────────────
+                        IconButton(onClick = { viewModel.toggleFavorite() }) {
+                            Icon(
+                                if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                                contentDescription = "Favorite",
+                                tint = if (isFavorite) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurface
                             )
                         }
-                    }
-                    IconButton(onClick = { imagePicker.launch("image/*") }) {
-                        Icon(Icons.Filled.Image, contentDescription = "Attach image")
-                    }
-                    if (letter != null && hasUnsavedChanges) {
-                        IconButton(onClick = { showDeleteDialog = true }) {
-                            Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                        Box(
+                            modifier = Modifier
+                                .height(48.dp)
+                                .clickable { showCategorySheet = true },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(catColor.copy(alpha = 0.18f))
+                                    .border(1.dp, catColor.copy(alpha = 0.5f), CircleShape)
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = category,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                    color = catColor,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
                         }
-                    }
-                    IconButton(onClick = { viewModel.saveLetter { onSaved() } }) {
-                        Icon(Icons.Filled.Save, contentDescription = "Save")
+                        IconButton(onClick = { imagePicker.launch("image/*") }) {
+                            Icon(Icons.Filled.Image, contentDescription = "Attach image")
+                        }
+                        if (letter != null && hasUnsavedChanges) {
+                            IconButton(onClick = { showDeleteDialog = true }) {
+                                Icon(Icons.Filled.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                        IconButton(onClick = { viewModel.saveLetter { onSaved() } }) {
+                            Icon(Icons.Filled.Save, contentDescription = "Save")
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
@@ -192,17 +357,20 @@ fun EditorScreen(
                                             .clip(RoundedCornerShape(8.dp))
                                             .clickable { previewAttachment = att }
                                     )
-                                    IconButton(
-                                        onClick = { viewModel.removeAttachment(att) },
-                                        modifier = Modifier
-                                            .size(22.dp)
-                                            .align(Alignment.TopEnd)
-                                            .background(
-                                                MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
-                                                CircleShape
-                                            )
-                                    ) {
-                                        Icon(Icons.Filled.Close, null, modifier = Modifier.size(13.dp))
+                                    // Delete X only shown in edit mode
+                                    if (!isViewMode) {
+                                        IconButton(
+                                            onClick = { viewModel.removeAttachment(att) },
+                                            modifier = Modifier
+                                                .size(22.dp)
+                                                .align(Alignment.TopEnd)
+                                                .background(
+                                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                                                    CircleShape
+                                                )
+                                        ) {
+                                            Icon(Icons.Filled.Close, null, modifier = Modifier.size(13.dp))
+                                        }
                                     }
                                 }
                             }
@@ -230,69 +398,101 @@ fun EditorScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .imePadding()
                 .verticalScroll(rememberScrollState())
         ) {
-            BasicTextField(
-                value = title,
-                onValueChange = viewModel::updateTitle,
-                textStyle = TextStyle(
-                    color = MaterialTheme.colorScheme.onBackground,
-                    fontSize = 26.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    lineHeight = 34.sp
-                ),
-                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                decorationBox = { inner ->
-                    Box {
-                        if (title.isEmpty()) Text(
-                            "Title",
-                            style = TextStyle(
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                                fontSize = 26.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        )
-                        inner()
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 8.dp)
-                    .focusRequester(titleFocus)
-            )
+            if (isViewMode) {
+                // ── VIEW MODE content ──────────────────────────────────────
+                // Title
+                Text(
+                    text = title.ifBlank { "Untitled" },
+                    style = TextStyle(
+                        color = MaterialTheme.colorScheme.onBackground,
+                        fontSize = 26.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        lineHeight = 34.sp
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 8.dp)
+                )
 
-            HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
 
-            BasicTextField(
-                value = body,
-                onValueChange = viewModel::updateBody,
-                textStyle = TextStyle(
-                    color = MaterialTheme.colorScheme.onBackground,
-                    fontSize = editorFontSize.sp,
-                    lineHeight = (editorFontSize * 1.6).sp
-                ),
-                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                decorationBox = { inner ->
-                    Box {
-                        if (body.isEmpty()) Text(
-                            "Write your letter\u2026",
-                            style = TextStyle(
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                                fontSize = editorFontSize.sp
+                // Body rendered as markdown
+                MarkdownText(
+                    text = body,
+                    baseFontSize = editorFontSize,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .defaultMinSize(minHeight = 400.dp)
+                        .padding(horizontal = 20.dp, vertical = 8.dp)
+                )
+            } else {
+                // ── EDIT MODE content ──────────────────────────────────────
+                BasicTextField(
+                    value = title,
+                    onValueChange = viewModel::updateTitle,
+                    textStyle = TextStyle(
+                        color = MaterialTheme.colorScheme.onBackground,
+                        fontSize = 26.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        lineHeight = 34.sp
+                    ),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    decorationBox = { inner ->
+                        Box {
+                            if (title.isEmpty()) Text(
+                                "Title",
+                                style = TextStyle(
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                    fontSize = 26.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
                             )
-                        )
-                        inner()
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .defaultMinSize(minHeight = 400.dp)
-                    .padding(horizontal = 20.dp, vertical = 8.dp)
-                    .focusRequester(bodyFocus)
-            )
+                            inner()
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 8.dp)
+                        .focusRequester(titleFocus)
+                )
+
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
+
+                BasicTextField(
+                    value = body,
+                    onValueChange = viewModel::updateBody,
+                    textStyle = TextStyle(
+                        color = MaterialTheme.colorScheme.onBackground,
+                        fontSize = editorFontSize.sp,
+                        lineHeight = (editorFontSize * 1.6).sp
+                    ),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    decorationBox = { inner ->
+                        Box {
+                            if (body.isEmpty()) Text(
+                                "Write your letter\u2026",
+                                style = TextStyle(
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                    fontSize = editorFontSize.sp
+                                )
+                            )
+                            inner()
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .defaultMinSize(minHeight = 400.dp)
+                        .padding(horizontal = 20.dp, vertical = 8.dp)
+                        .focusRequester(bodyFocus)
+                )
+            }
         }
     }
 
+    // ── Image preview dialog ─────────────────────────────────────────────────
     previewAttachment?.let { att ->
         Dialog(
             onDismissRequest = { previewAttachment = null },
@@ -331,6 +531,7 @@ fun EditorScreen(
         }
     }
 
+    // ── Unsaved changes dialog (only relevant in edit mode) ──────────────────
     if (showUnsavedDialog) {
         AlertDialog(
             onDismissRequest = { showUnsavedDialog = false },
@@ -358,6 +559,7 @@ fun EditorScreen(
         )
     }
 
+    // ── Delete dialog ────────────────────────────────────────────────────────
     if (showDeleteDialog) {
         DeleteConfirmationDialog(
             onConfirm = {
@@ -367,6 +569,7 @@ fun EditorScreen(
         )
     }
 
+    // ── Category bottom sheet (only in edit mode) ────────────────────────────
     if (showCategorySheet) {
         ModalBottomSheet(onDismissRequest = { showCategorySheet = false }) {
             Text(
