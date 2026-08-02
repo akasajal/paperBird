@@ -7,8 +7,11 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.ishaan.paperBird.ui.components.LockScreen
 import com.ishaan.paperBird.ui.screens.LetterViewModel
 import com.ishaan.paperBird.ui.theme.AccentColors
@@ -29,8 +32,6 @@ class MainActivity : AppCompatActivity() {
             val accentName by settingsRepo.accentColor.collectAsState(initial = "Rose")
             val accent = AccentColors.all[accentName] ?: AccentColors.Rose
             val systemDark = isSystemInDarkTheme()
-
-            // null = user hasn't picked → follow system
             val useDark = darkThemeOverride ?: systemDark
             val categoryColors by settingsRepo.allCategoryColors.collectAsState(initial = emptyMap())
 
@@ -39,15 +40,31 @@ class MainActivity : AppCompatActivity() {
             val useBiometrics by settingsRepo.useBiometrics.collectAsState(initial = false)
             val usePin by settingsRepo.usePin.collectAsState(initial = false)
             val appPinHash by settingsRepo.appPinHash.collectAsState(initial = null)
+            val instantLock by settingsRepo.instantLock.collectAsState(initial = false)
 
             var isUnlocked by remember(appLockEnabled == null) {
                 mutableStateOf(appLockEnabled == false)
             }
 
+            // Instant lock: re-lock when app goes to background
+            val lifecycleOwner = LocalLifecycleOwner.current
+            DisposableEffect(lifecycleOwner, instantLock, appLockEnabled) {
+                val observer = LifecycleEventObserver { _, event ->
+                    if (event == Lifecycle.Event.ON_STOP &&
+                        instantLock &&
+                        appLockEnabled == true
+                    ) {
+                        isUnlocked = false
+                    }
+                }
+                lifecycleOwner.lifecycle.addObserver(observer)
+                onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+            }
+
             paperBirdTheme(darkTheme = useDark, accent = accent) {
                 CompositionLocalProvider(LocalCategoryColors provides categoryColors) {
                     val needsLock = appLockEnabled == true && (useBiometrics || usePin)
-                    
+
                     if (appLockEnabled != null && needsLock && !isUnlocked) {
                         LockScreen(
                             useBiometrics = useBiometrics,

@@ -10,26 +10,24 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+
+// ── Set PIN (enter twice to confirm) ─────────────────────────────────────────
 
 @Composable
 fun PinSetupDialog(
     onDismiss: () -> Unit,
     onPinSet: (String) -> Unit
 ) {
-    var step by remember { mutableIntStateOf(1) } // 1: Initial, 2: Verify
+    var step by remember { mutableIntStateOf(1) }
     var firstPin by remember { mutableStateOf("") }
     var currentInput by remember { mutableStateOf("") }
     var errorText by remember { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = {
-            Text(if (step == 1) "Set PIN" else "Confirm PIN")
-        },
+        title = { Text(if (step == 1) "Set PIN" else "Confirm PIN") },
         text = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
@@ -39,27 +37,11 @@ fun PinSetupDialog(
                     text = if (step == 1) "Enter a 4-digit PIN" else "Re-enter your PIN to verify",
                     style = MaterialTheme.typography.bodyMedium
                 )
-                
+
                 Spacer(Modifier.height(24.dp))
-                
-                // PIN dots
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    repeat(4) { index ->
-                        val isFilled = index < currentInput.length
-                        Box(
-                            modifier = Modifier
-                                .size(16.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    if (isFilled) MaterialTheme.colorScheme.primary 
-                                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f)
-                                )
-                        )
-                    }
-                }
-                
+
+                PinDots(filledCount = currentInput.length)
+
                 if (errorText.isNotEmpty()) {
                     Text(
                         text = errorText,
@@ -68,15 +50,14 @@ fun PinSetupDialog(
                         modifier = Modifier.padding(top = 16.dp)
                     )
                 }
-                
+
                 Spacer(Modifier.height(32.dp))
-                
+
                 NumericKeypad(
                     onNumberClick = { num ->
                         if (currentInput.length < 4) {
                             currentInput += num
                             errorText = ""
-                            
                             if (currentInput.length == 4) {
                                 if (step == 1) {
                                     firstPin = currentInput
@@ -96,18 +77,103 @@ fun PinSetupDialog(
                         }
                     },
                     onBackspaceClick = {
-                        if (currentInput.isNotEmpty()) {
-                            currentInput = currentInput.dropLast(1)
-                        }
+                        if (currentInput.isNotEmpty()) currentInput = currentInput.dropLast(1)
                     }
                 )
             }
         },
         confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        }
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
+}
+
+// ── Verify existing PIN ───────────────────────────────────────────────────────
+
+/**
+ * Asks the user to enter their current PIN. Calls [onVerified] when correct,
+ * [onDismiss] on cancel. [storedHash] is the SHA-256 hex hash from the repository;
+ * [verifyPin] is the repository's verify function.
+ */
+@Composable
+fun PinVerifyDialog(
+    title: String = "Confirm PIN",
+    subtitle: String = "Enter your PIN to continue",
+    storedHash: String?,
+    verifyPin: (String, String?) -> Boolean,
+    onDismiss: () -> Unit,
+    onVerified: () -> Unit
+) {
+    var currentInput by remember { mutableStateOf("") }
+    var errorText by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(text = subtitle, style = MaterialTheme.typography.bodyMedium)
+
+                Spacer(Modifier.height(24.dp))
+
+                PinDots(filledCount = currentInput.length)
+
+                if (errorText.isNotEmpty()) {
+                    Text(
+                        text = errorText,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(top = 16.dp)
+                    )
+                }
+
+                Spacer(Modifier.height(32.dp))
+
+                NumericKeypad(
+                    onNumberClick = { num ->
+                        if (currentInput.length < 4) {
+                            currentInput += num
+                            errorText = ""
+                            if (currentInput.length == 4) {
+                                if (verifyPin(currentInput, storedHash)) {
+                                    onVerified()
+                                } else {
+                                    errorText = "Incorrect PIN. Try again."
+                                    currentInput = ""
+                                }
+                            }
+                        }
+                    },
+                    onBackspaceClick = {
+                        if (currentInput.isNotEmpty()) currentInput = currentInput.dropLast(1)
+                    }
+                )
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+// ── Shared UI ─────────────────────────────────────────────────────────────────
+
+@Composable
+private fun PinDots(filledCount: Int) {
+    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        repeat(4) { index ->
+            Box(
+                modifier = Modifier
+                    .size(16.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (index < filledCount) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f)
+                    )
+            )
+        }
+    }
 }
 
 @Composable
@@ -125,23 +191,17 @@ fun NumericKeypad(
             listOf("7", "8", "9"),
             listOf("", "0", "BACK")
         )
-        
+
         rows.forEach { row ->
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(24.dp)
-            ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                 row.forEach { item ->
-                    if (item.isEmpty()) {
-                        Spacer(Modifier.size(64.dp))
-                    } else if (item == "BACK") {
-                        IconButton(
+                    when {
+                        item.isEmpty() -> Spacer(Modifier.size(64.dp))
+                        item == "BACK" -> IconButton(
                             onClick = onBackspaceClick,
                             modifier = Modifier.size(64.dp)
-                        ) {
-                            Icon(Icons.AutoMirrored.Filled.Backspace, null)
-                        }
-                    } else {
-                        Surface(
+                        ) { Icon(Icons.AutoMirrored.Filled.Backspace, null) }
+                        else -> Surface(
                             onClick = { onNumberClick(item) },
                             shape = CircleShape,
                             color = MaterialTheme.colorScheme.surfaceVariant,

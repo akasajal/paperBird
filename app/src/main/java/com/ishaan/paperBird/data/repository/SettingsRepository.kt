@@ -17,20 +17,20 @@ class SettingsRepository @Inject constructor(
     private val dataStore: DataStore<Preferences>
 ) {
     companion object {
-        val KEY_DARK_THEME = stringPreferencesKey("dark_theme")  // "dark" | "light" | unset = system
+        val KEY_DARK_THEME = stringPreferencesKey("dark_theme")
         val KEY_ACCENT_COLOR = stringPreferencesKey("accent_color")
         val KEY_EDITOR_FONT_SIZE = intPreferencesKey("editor_font_size")
         val KEY_DEFAULT_CATEGORY = stringPreferencesKey("default_category")
         val KEY_CUSTOM_CATEGORIES = stringPreferencesKey("custom_categories")
         val KEY_CUSTOM_CATEGORY_COLORS = stringPreferencesKey("custom_category_colors")
-        
+
         val KEY_APP_LOCK_ENABLED = booleanPreferencesKey("app_lock_enabled")
         val KEY_USE_BIOMETRICS = booleanPreferencesKey("use_biometrics")
         val KEY_USE_PIN = booleanPreferencesKey("use_pin")
         val KEY_APP_PIN_HASH = stringPreferencesKey("app_pin_hash")
+        val KEY_INSTANT_LOCK = booleanPreferencesKey("instant_lock")
     }
 
-    // null = follow system, true = force dark, false = force light
     val darkTheme: Flow<Boolean?> = dataStore.data
         .catch { emit(emptyPreferences()) }
         .map {
@@ -68,13 +68,9 @@ class SettingsRepository @Inject constructor(
             try {
                 val json = JSONObject(raw)
                 val map = mutableMapOf<String, Long>()
-                json.keys().forEach { key ->
-                    map[key] = json.getLong(key)
-                }
+                json.keys().forEach { key -> map[key] = json.getLong(key) }
                 map
-            } catch (e: Exception) {
-                emptyMap()
-            }
+            } catch (e: Exception) { emptyMap() }
         }
 
     val allCategories: Flow<List<String>> = customCategories.map { custom ->
@@ -101,11 +97,14 @@ class SettingsRepository @Inject constructor(
         .catch { emit(emptyPreferences()) }
         .map { it[KEY_APP_PIN_HASH] }
 
+    val instantLock: Flow<Boolean> = dataStore.data
+        .catch { emit(emptyPreferences()) }
+        .map { it[KEY_INSTANT_LOCK] ?: false }
+
     suspend fun setDarkTheme(value: Boolean) =
         dataStore.edit { it[KEY_DARK_THEME] = if (value) "dark" else "light" }
 
-    suspend fun setSystemTheme() =
-        dataStore.edit { it.remove(KEY_DARK_THEME) }
+    suspend fun setSystemTheme() = dataStore.edit { it.remove(KEY_DARK_THEME) }
 
     suspend fun setAccentColor(value: String) = dataStore.edit { it[KEY_ACCENT_COLOR] = value }
     suspend fun setEditorFontSize(value: Int) = dataStore.edit { it[KEY_EDITOR_FONT_SIZE] = value }
@@ -115,8 +114,6 @@ class SettingsRepository @Inject constructor(
         val existing = prefs[KEY_CUSTOM_CATEGORIES]?.split(",")?.filter(String::isNotBlank) ?: emptyList()
         if (name !in existing && name !in DEFAULT_CATEGORIES) {
             prefs[KEY_CUSTOM_CATEGORIES] = (existing + name).joinToString(",")
-
-            // Add color
             val rawColors = prefs[KEY_CUSTOM_CATEGORY_COLORS] ?: "{}"
             val json = JSONObject(rawColors)
             json.put(name, color)
@@ -127,8 +124,6 @@ class SettingsRepository @Inject constructor(
     suspend fun removeCustomCategory(name: String) = dataStore.edit { prefs ->
         val existing = prefs[KEY_CUSTOM_CATEGORIES]?.split(",")?.filter(String::isNotBlank) ?: emptyList()
         prefs[KEY_CUSTOM_CATEGORIES] = existing.filter { it != name }.joinToString(",")
-
-        // Remove color
         val rawColors = prefs[KEY_CUSTOM_CATEGORY_COLORS] ?: "{}"
         try {
             val json = JSONObject(rawColors)
@@ -140,20 +135,33 @@ class SettingsRepository @Inject constructor(
     suspend fun setAppLockEnabled(value: Boolean) = dataStore.edit { it[KEY_APP_LOCK_ENABLED] = value }
     suspend fun setUseBiometrics(value: Boolean) = dataStore.edit { it[KEY_USE_BIOMETRICS] = value }
     suspend fun setUsePin(value: Boolean) = dataStore.edit { it[KEY_USE_PIN] = value }
+    suspend fun setInstantLock(value: Boolean) = dataStore.edit { it[KEY_INSTANT_LOCK] = value }
+
+    /** Enables app lock: stores the PIN hash and flips the enabled flag atomically. */
+    suspend fun enableAppLock(pin: String) = dataStore.edit {
+        it[KEY_APP_PIN_HASH] = hashPin(pin)
+        it[KEY_USE_PIN] = true
+        it[KEY_APP_LOCK_ENABLED] = true
+    }
+
+    /** Disables app lock: clears PIN hash, biometrics, instant lock, and the enabled flag. */
+    suspend fun disableAppLock() = dataStore.edit {
+        it[KEY_APP_LOCK_ENABLED] = false
+        it[KEY_USE_PIN] = false
+        it[KEY_USE_BIOMETRICS] = false
+        it[KEY_INSTANT_LOCK] = false
+        it.remove(KEY_APP_PIN_HASH)
+    }
 
     suspend fun setAppPin(pin: String) = dataStore.edit {
         it[KEY_APP_PIN_HASH] = hashPin(pin)
         it[KEY_USE_PIN] = true
     }
 
-    fun verifyPin(input: String, storedHash: String?): Boolean {
-        return hashPin(input) == storedHash
-    }
+    fun verifyPin(input: String, storedHash: String?): Boolean = hashPin(input) == storedHash
 
     private fun hashPin(pin: String): String {
-        val bytes = pin.toByteArray()
         val md = MessageDigest.getInstance("SHA-256")
-        val digest = md.digest(bytes)
-        return digest.fold("") { str, it -> str + "%02x".format(it) }
+        return md.digest(pin.toByteArray()).fold("") { s, b -> s + "%02x".format(b) }
     }
 }

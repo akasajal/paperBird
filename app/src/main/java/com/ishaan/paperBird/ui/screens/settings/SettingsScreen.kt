@@ -23,6 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ishaan.paperBird.ui.components.PinSetupDialog
+import com.ishaan.paperBird.ui.components.PinVerifyDialog
 import com.ishaan.paperBird.ui.screens.LetterViewModel
 import com.ishaan.paperBird.ui.theme.AccentColors
 import com.ishaan.paperBird.ui.theme.CategoryPalette
@@ -52,8 +53,11 @@ fun SettingsScreen(
     val appLockEnabled by settings.appLockEnabled.collectAsState(initial = false)
     val useBiometrics by settings.useBiometrics.collectAsState(initial = false)
     val usePin by settings.usePin.collectAsState(initial = false)
+    val instantLock by settings.instantLock.collectAsState(initial = false)
+    val appPinHash by settings.appPinHash.collectAsState(initial = null)
 
     var showPinSetup by remember { mutableStateOf(false) }
+    var showPinVerifyToDisable by remember { mutableStateOf(false) }
 
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -262,23 +266,31 @@ fun SettingsScreen(
             // ── Privacy ───────────────────────────────────────────────────
             item { SettingsSection("Privacy") }
 
+            // App Lock
             item {
                 SettingsRow(
                     title = "App Lock",
-                    subtitle = "Secure the app with PIN or Biometrics",
+                    subtitle = if (appLockEnabled) "Tap to disable" else "Secure app with a PIN",
                     trailing = {
                         Switch(
                             checked = appLockEnabled,
-                            onCheckedChange = { scope.launch { settings.setAppLockEnabled(it) } }
+                            onCheckedChange = { turningOn ->
+                                if (turningOn) {
+                                    showPinSetup = true
+                                } else {
+                                    showPinVerifyToDisable = true
+                                }
+                            }
                         )
                     }
                 )
             }
 
+            // Biometric
             item {
                 val muted = !appLockEnabled
                 SettingsRow(
-                    title = "Use Biometrics",
+                    title = "Biometric",
                     subtitle = "Unlock with Fingerprint or Face",
                     onClick = if (appLockEnabled) { { scope.launch { settings.setUseBiometrics(!useBiometrics) } } } else null,
                     trailing = {
@@ -297,22 +309,17 @@ fun SettingsScreen(
                 )
             }
 
+            // Instant Lock
             item {
                 val muted = !appLockEnabled
                 SettingsRow(
-                    title = "Use PIN",
-                    subtitle = "4-digit security code",
-                    onClick = if (appLockEnabled) { {
-                        if (!usePin) showPinSetup = true
-                        else scope.launch { settings.setUsePin(false) }
-                    } } else null,
+                    title = "Instant Lock",
+                    subtitle = "Lock immediately when app goes to background",
+                    onClick = if (appLockEnabled) { { scope.launch { settings.setInstantLock(!instantLock) } } } else null,
                     trailing = {
                         Switch(
-                            checked = usePin,
-                            onCheckedChange = {
-                                if (it) showPinSetup = true
-                                else scope.launch { settings.setUsePin(false) }
-                            },
+                            checked = instantLock,
+                            onCheckedChange = { scope.launch { settings.setInstantLock(it) } },
                             enabled = appLockEnabled,
                             colors = if (muted) SwitchDefaults.colors(
                                 disabledCheckedThumbColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f),
@@ -329,21 +336,40 @@ fun SettingsScreen(
             item { SettingsSection("About") }
             item {
                 SettingsRow(
-                    title = "To Her",
-                    subtitle = "v1.2 · A place for everything I never got to say."
+                    title = "Paper Bird",
+                    subtitle = "v1.0 · A quiet place for your thoughts."
                 )
             }
         }
     }
 
+    // Turning App Lock ON: set a new PIN (entered twice) then enable
     if (showPinSetup) {
         PinSetupDialog(
             onDismiss = { showPinSetup = false },
             onPinSet = { pin ->
                 scope.launch {
-                    settings.setAppPin(pin)
+                    settings.enableAppLock(pin)
                     showPinSetup = false
-                    snackbarHostState.showSnackbar("PIN set successfully")
+                    snackbarHostState.showSnackbar("App Lock enabled")
+                }
+            }
+        )
+    }
+
+    // Turning App Lock OFF: verify current PIN first
+    if (showPinVerifyToDisable) {
+        PinVerifyDialog(
+            title = "Disable App Lock",
+            subtitle = "Enter your PIN to confirm",
+            storedHash = appPinHash,
+            verifyPin = settings::verifyPin,
+            onDismiss = { showPinVerifyToDisable = false },
+            onVerified = {
+                scope.launch {
+                    settings.disableAppLock()
+                    showPinVerifyToDisable = false
+                    snackbarHostState.showSnackbar("App Lock disabled")
                 }
             }
         )
