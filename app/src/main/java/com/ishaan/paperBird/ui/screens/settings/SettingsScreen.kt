@@ -337,7 +337,7 @@ fun SettingsScreen(
             item {
                 SettingsRow(
                     title = "Paper Bird",
-                    subtitle = "v1.0 · A quiet place for your thoughts."
+                    subtitle = "v1.1 · A quiet place for your thoughts."
                 )
             }
         }
