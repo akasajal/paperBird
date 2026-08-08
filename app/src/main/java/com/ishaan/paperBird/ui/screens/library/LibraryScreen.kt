@@ -109,20 +109,30 @@ fun LibraryScreen(
     }
 
     val grouped = remember(filtered) {
-        filtered.groupBy { letter ->
-            val date = Instant.ofEpochMilli(letter.updatedAt)
+        val today = LocalDate.now()
+        // Assign each letter a bucket label and a sort key (most recent first)
+        data class Bucketed(val label: String, val sortKey: Long, val letter: com.ishaan.paperBird.domain.model.Letter)
+        val bucketed = filtered.map { letter ->
+            val date = Instant.ofEpochMilli(letter.createdAt)
                 .atZone(ZoneId.systemDefault()).toLocalDate()
-            val today = LocalDate.now()
             val days = ChronoUnit.DAYS.between(date, today)
-            when {
+            val label = when {
                 days == 0L -> "Today"
                 days == 1L -> "Yesterday"
-                days <= 7 -> "This Week"
-                days <= 30 -> "This Month"
+                days <= 7  -> "This Week"
+                date.year == today.year && date.month == today.month -> "This Month"
                 date.year == today.year -> date.month.name.lowercase().replaceFirstChar { it.uppercase() }
-                else -> date.year.toString()
+                else -> "${date.month.name.lowercase().replaceFirstChar { it.uppercase() }} ${date.year}"
             }
+            // Sort key = most recent createdAt within the bucket, negated so DESC
+            Bucketed(label, -letter.createdAt, letter)
         }
+        // Group, then sort groups by their earliest (most recent) sort key
+        bucketed
+            .groupBy { it.label }
+            .entries
+            .sortedBy { (_, items) -> items.minOf { it.sortKey } }
+            .associate { (label, items) -> label to items.map { it.letter } }
     }
 
     Scaffold(
@@ -298,7 +308,7 @@ fun LibraryScreen(
 
     if (showExportFormatDialog) {
         ExportFormatDialog(
-            onDismiss = { 
+            onDismiss = {
                 showExportFormatDialog = false
                 lettersToExport = emptyList()
             },
@@ -309,7 +319,7 @@ fun LibraryScreen(
                 } else {
                     "exported_letters"
                 }
-                
+
                 when (format) {
                     ExportFormat.JSON -> jsonExportLauncher.launch("$defaultName.json")
                     ExportFormat.PDF -> pdfExportLauncher.launch("$defaultName.pdf")

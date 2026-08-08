@@ -66,7 +66,7 @@ class LetterViewModel @Inject constructor(
     private val _editorBody = MutableStateFlow("")
     val editorBody = _editorBody.asStateFlow()
 
-    private val _editorCategory = MutableStateFlow("Today")
+    private val _editorCategory = MutableStateFlow("Life")
     val editorCategory = _editorCategory.asStateFlow()
 
     // Unified favourite flag — works for both new and saved letters
@@ -86,7 +86,7 @@ class LetterViewModel @Inject constructor(
                 _currentLetter.value = letter
                 _editorTitle.value = letter?.title ?: ""
                 _editorBody.value = letter?.body ?: ""
-                _editorCategory.value = letter?.category ?: "Today"
+                _editorCategory.value = letter?.category ?: "Life"
                 _editorFavorite.value = letter?.favorite ?: false
                 _pendingAttachments.value = emptyList()
                 _hasUnsavedChanges.value = false

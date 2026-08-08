@@ -1,6 +1,10 @@
 package com.ishaan.paperBird.ui.screens.editor
 
 import android.net.Uri
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -32,9 +36,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
@@ -47,6 +53,7 @@ import com.ishaan.paperBird.domain.model.CATEGORY_COLORS
 import com.ishaan.paperBird.ui.components.CategoryBadge
 import com.ishaan.paperBird.ui.components.DeleteConfirmationDialog
 import com.ishaan.paperBird.ui.screens.LetterViewModel
+import kotlinx.coroutines.delay
 
 // ---------------------------------------------------------------------------
 // Simple markdown → AnnotatedString renderer (no external library needed)
@@ -121,7 +128,7 @@ private fun MarkdownText(
  * Appends inline markdown spans (**bold**, *italic*, ~~strike~~, `code`) into the
  * current AnnotatedString builder scope.
  */
-private fun androidx.compose.ui.text.AnnotatedString.Builder.appendInlineMarkdown(text: String) {
+private fun AnnotatedString.Builder.appendInlineMarkdown(text: String) {
     // Tokenise inline patterns
     val pattern = Regex("""(\*\*(.+?)\*\*|\*(.+?)\*|~~(.+?)~~|`(.+?)`)""")
     var last = 0
@@ -139,7 +146,7 @@ private fun androidx.compose.ui.text.AnnotatedString.Builder.appendInlineMarkdow
                 append(match.groupValues[4])
             }
             raw.startsWith("`") -> withStyle(SpanStyle(
-                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                fontFamily = FontFamily.Monospace,
                 background = Color(0x22808080)
             )) {
                 append(match.groupValues[5])
@@ -164,6 +171,7 @@ fun EditorScreen(
     onSaved: () -> Unit = onBack
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     val letter by viewModel.currentLetter.collectAsState()
     val title by viewModel.editorTitle.collectAsState()
@@ -199,18 +207,44 @@ fun EditorScreen(
         ActivityResultContracts.GetMultipleContents()
     ) { uris: List<Uri> ->
         uris.forEach { uri ->
-            val filename = uri.lastPathSegment ?: "image"
             val mime = context.contentResolver.getType(uri) ?: "image/*"
-            viewModel.addAttachment(
-                Attachment(letterId = letter?.id ?: 0, filename = filename, mimeType = mime, uriPath = uri.toString())
-            )
+            val ext = when {
+                mime.contains("png")  -> "png"
+                mime.contains("gif")  -> "gif"
+                mime.contains("webp") -> "webp"
+                else                  -> "jpg"
+            }
+            scope.launch {
+                val file = withContext(Dispatchers.IO) {
+                    try {
+                        val dir = File(context.filesDir, "attachments").also { it.mkdirs() }
+                        val dest = File(dir, "img_${System.currentTimeMillis()}.$ext")
+                        context.contentResolver.openInputStream(uri)?.use { input ->
+                            dest.outputStream().use { input.copyTo(it) }
+                        }
+                        dest
+                    } catch (e: Exception) {
+                        null
+                    }
+                }
+                if (file != null) {
+                    viewModel.addAttachment(
+                        Attachment(
+                            letterId = letter?.id ?: 0,
+                            filename = file.name,
+                            mimeType = mime,
+                            uriPath  = file.absolutePath,
+                        )
+                    )
+                }
+            }
         }
     }
 
     // Autosave on content change for existing letters (only in edit mode)
     LaunchedEffect(title, body) {
         if (!isViewMode && letter != null && hasUnsavedChanges) {
-            kotlinx.coroutines.delay(3000)
+            delay(3000)
             viewModel.saveLetter()
         }
     }
@@ -218,7 +252,7 @@ fun EditorScreen(
     LaunchedEffect(letterId) {
         viewModel.loadLetter(letterId)
         if (letterId == null) {
-            kotlinx.coroutines.delay(100)
+            delay(100)
             titleFocus.requestFocus()
         }
     }
@@ -348,7 +382,7 @@ fun EditorScreen(
                             items(attachments, key = { it.id }) { att ->
                                 Box {
                                     AsyncImage(
-                                        model = Uri.parse(att.uriPath),
+                                        model = File(att.uriPath),
                                         contentDescription = att.filename,
                                         contentScale = ContentScale.Crop,
                                         modifier = Modifier
@@ -510,7 +544,7 @@ fun EditorScreen(
                 contentAlignment = Alignment.Center
             ) {
                 AsyncImage(
-                    model = Uri.parse(att.uriPath),
+                    model = File(att.uriPath),
                     contentDescription = att.filename,
                     contentScale = ContentScale.Fit,
                     modifier = Modifier

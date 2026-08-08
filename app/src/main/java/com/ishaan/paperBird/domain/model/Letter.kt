@@ -25,7 +25,7 @@ data class Letter(
     val id: Long = 0,
     val title: String = "",
     val body: String = "",
-    val category: String = "Today",
+    val category: String = "Life",
     val favorite: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
@@ -48,7 +48,7 @@ data class Letter(
             return Letter(
                 title = json.optString("title", ""),
                 body = json.optString("body", ""),
-                category = json.optString("category", "Today"),
+                category = json.optString("category", "Life"),
                 favorite = json.optBoolean("favorite", false),
                 createdAt = parseDate(json, "createdAt"),
                 updatedAt = parseDate(json, "updatedAt")
@@ -84,7 +84,7 @@ data class Attachment(
 )
 
 val DEFAULT_CATEGORIES = listOf(
-    "Love", "Gratitude", "Achievement", "Grief", "Memory", "Dream", "Today"
+    "Love", "Gratitude", "Achievement", "Grief", "Memory", "Dream", "Happy", "Life", "Health", "Family"
 )
 
 val CATEGORY_COLORS = mapOf(
@@ -94,5 +94,8 @@ val CATEGORY_COLORS = mapOf(
     "Memory" to 0xFF9D8DF1,
     "Dream" to 0xFF61C0BF,
     "Grief" to 0xFF6E7FA8,
-    "Today" to 0xFF9A9A9A
+    "Happy"  to 0xFFFFC107,
+    "Life"   to 0xFF4CAF50,
+    "Health" to 0xFF00BCD4,
+    "Family" to 0xFFFF7043
 )

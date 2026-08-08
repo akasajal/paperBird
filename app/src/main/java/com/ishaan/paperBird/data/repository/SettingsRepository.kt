@@ -51,7 +51,7 @@ class SettingsRepository @Inject constructor(
 
     val defaultCategory: Flow<String> = dataStore.data
         .catch { emit(emptyPreferences()) }
-        .map { it[KEY_DEFAULT_CATEGORY] ?: "Today" }
+        .map { it[KEY_DEFAULT_CATEGORY] ?: "Life" }
 
     val customCategories: Flow<List<String>> = dataStore.data
         .catch { emit(emptyPreferences()) }
