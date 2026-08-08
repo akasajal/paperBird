@@ -2,6 +2,11 @@ package com.ishaan.paperBird.ui.screens.settings
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -288,56 +293,52 @@ fun SettingsScreen(
 
             // Biometric
             item {
-                val muted = !appLockEnabled
-                SettingsRow(
-                    title = "Biometric",
-                    subtitle = "Unlock with Fingerprint or Face",
-                    onClick = if (appLockEnabled) { { scope.launch { settings.setUseBiometrics(!useBiometrics) } } } else null,
-                    trailing = {
-                        Switch(
-                            checked = useBiometrics,
-                            onCheckedChange = { scope.launch { settings.setUseBiometrics(it) } },
-                            enabled = appLockEnabled,
-                            colors = if (muted) SwitchDefaults.colors(
-                                disabledCheckedThumbColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f),
-                                disabledCheckedTrackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
-                                disabledUncheckedThumbColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f),
-                                disabledUncheckedTrackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
-                            ) else SwitchDefaults.colors()
-                        )
-                    }
-                )
+                AnimatedVisibility(
+                    visible = appLockEnabled,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut(),
+                ) {
+                    SettingsRow(
+                        title = "Biometric",
+                        subtitle = "Unlock with Fingerprint or Face",
+                        onClick = { scope.launch { settings.setUseBiometrics(!useBiometrics) } },
+                        trailing = {
+                            Switch(
+                                checked = useBiometrics,
+                                onCheckedChange = { scope.launch { settings.setUseBiometrics(it) } },
+                            )
+                        }
+                    )
+                }
             }
 
             // Instant Lock
             item {
-                val muted = !appLockEnabled
-                SettingsRow(
-                    title = "Instant Lock",
-                    subtitle = "Lock immediately when app goes to background",
-                    onClick = if (appLockEnabled) { { scope.launch { settings.setInstantLock(!instantLock) } } } else null,
-                    trailing = {
-                        Switch(
-                            checked = instantLock,
-                            onCheckedChange = { scope.launch { settings.setInstantLock(it) } },
-                            enabled = appLockEnabled,
-                            colors = if (muted) SwitchDefaults.colors(
-                                disabledCheckedThumbColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f),
-                                disabledCheckedTrackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
-                                disabledUncheckedThumbColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f),
-                                disabledUncheckedTrackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
-                            ) else SwitchDefaults.colors()
-                        )
-                    }
-                )
+                AnimatedVisibility(
+                    visible = appLockEnabled,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut(),
+                ) {
+                    SettingsRow(
+                        title = "Instant Lock",
+                        subtitle = "Lock immediately when app goes to background",
+                        onClick = { scope.launch { settings.setInstantLock(!instantLock) } },
+                        trailing = {
+                            Switch(
+                                checked = instantLock,
+                                onCheckedChange = { scope.launch { settings.setInstantLock(it) } },
+                            )
+                        }
+                    )
+                }
             }
 
             // ── About ─────────────────────────────────────────────────────
             item { SettingsSection("About") }
             item {
                 SettingsRow(
-                    title = "Paper Bird",
-                    subtitle = "v1.1 · A quiet place for your thoughts."
+                    title = "To Her",
+                    subtitle = "v1.3 · A place for everything I never got to say."
                 )
             }
         }
